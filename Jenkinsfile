@@ -275,10 +275,16 @@ EOF_POMS
           if [ -f "${HELM_VALUES_FILE}" ]; then
             HELM_EXTRA_ARGS="-f ${HELM_VALUES_FILE}"
           fi
-          helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART_PATH}" \
+          if ! helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART_PATH}" \
             ${HELM_EXTRA_ARGS} \
             --namespace "${DEPLOY_NAMESPACE}" \
-            --wait --timeout 5m
+            --wait --timeout 5m; then
+            echo "Helm deploy failed. Collecting diagnostics..."
+            kubectl get all -n "${DEPLOY_NAMESPACE}" || true
+            kubectl describe deploy "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" || true
+            kubectl get events -n "${DEPLOY_NAMESPACE}" --sort-by=.metadata.creationTimestamp | tail -n 40 || true
+            exit 1
+          fi
           kubectl get pods -n "${DEPLOY_NAMESPACE}"
         '''
       }
