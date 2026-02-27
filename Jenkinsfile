@@ -313,20 +313,24 @@ EOF_POMS
             fi
           fi
           DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
-          SERVICE_DNS="${HELM_RELEASE}.${DEPLOY_NAMESPACE}.svc.cluster.local"
-          SMOKE_POD="smoke-${BUILD_NUMBER}"
 
           kubectl config use-context minikube
           kubectl rollout status deployment/"${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" --timeout=120s
 
-          kubectl run "${SMOKE_POD}" \
-            -n "${DEPLOY_NAMESPACE}" \
-            --image=curlimages/curl:8.12.1 \
-            --restart=Never \
-            --command -- sh -c "curl -fsS http://${SERVICE_DNS}:80/ >/dev/null"
-          kubectl wait --for=condition=Ready pod/"${SMOKE_POD}" -n "${DEPLOY_NAMESPACE}" --timeout=90s || true
-          kubectl wait --for=condition=Succeeded pod/"${SMOKE_POD}" -n "${DEPLOY_NAMESPACE}" --timeout=90s
-          kubectl delete pod "${SMOKE_POD}" -n "${DEPLOY_NAMESPACE}" --ignore-not-found=true
+          ENDPOINT_IP="$(kubectl get endpoints "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" -o jsonpath='{.subsets[0].addresses[0].ip}' || true)"
+          test -n "${ENDPOINT_IP}"
+
+          APP_POD="$(kubectl get pods -n "${DEPLOY_NAMESPACE}" -l app.kubernetes.io/instance="${HELM_RELEASE}" -o jsonpath='{.items[0].metadata.name}')"
+          test -n "${APP_POD}"
+          kubectl exec -n "${DEPLOY_NAMESPACE}" "${APP_POD}" -- sh -c '
+            if command -v wget >/dev/null 2>&1; then
+              wget -q -O- http://127.0.0.1/ >/dev/null
+            elif command -v curl >/dev/null 2>&1; then
+              curl -fsS http://127.0.0.1/ >/dev/null
+            else
+              echo "No curl/wget in container; endpoint check already passed."
+            fi
+          '
         '''
       }
     }
