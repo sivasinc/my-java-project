@@ -34,7 +34,7 @@ docker compose --env-file .env up -d
 - Vault: http://localhost:8200
 
 ## 3) Core connection endpoints
-- Postgres: `localhost:5432` (`bank_admin` / `bank_admin_pass`)
+- Postgres: `localhost:5433` (`bank_admin` / `bank_admin_pass`)
 - Redis: `localhost:6379`
 - Kafka bootstrap: `localhost:9092`
 - RabbitMQ AMQP: `localhost:5672`

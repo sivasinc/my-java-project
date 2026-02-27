@@ -20,7 +20,7 @@ service:
 
 env:
   APP_SECURITY_ENABLED: "false"
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://host.minikube.internal:5432/accounts_db"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://host.minikube.internal:5433/accounts_db"
   SPRING_DATASOURCE_USERNAME: "bank_admin"
   SPRING_DATASOURCE_PASSWORD: "bank_admin_pass"
   SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://host.minikube.internal:8081/realms/banking"
