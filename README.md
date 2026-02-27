@@ -2,6 +2,9 @@
 
 This repository provides a production-style local platform for a banking microservices system using only free services.
 
+Full detailed technical handbook (inception to current):  
+- [INFRA_README.md](/Users/sivaprasad/Desktop/my-java-project/INFRA_README.md)
+
 ## Included Services
 - PostgreSQL: transactional data + per-service databases
 - Redis: cache/session store
