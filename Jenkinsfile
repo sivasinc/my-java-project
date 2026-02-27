@@ -12,6 +12,8 @@ pipeline {
   environment {
     MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository -Djava.awt.headless=true'
     JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
+    PATH = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
+    DOCKER_BIN = ""
   }
 
   stages {
@@ -19,6 +21,42 @@ pipeline {
       steps {
         checkout scm
         sh 'git status --short || true'
+      }
+    }
+
+    stage('Toolchain Check') {
+      steps {
+        script {
+          def dockerPath = sh(script: '''
+            set +e
+            if command -v docker >/dev/null 2>&1; then
+              command -v docker
+              exit 0
+            fi
+            if [ -x /usr/local/bin/docker ]; then
+              echo /usr/local/bin/docker
+              exit 0
+            fi
+            if [ -x /Applications/Docker.app/Contents/Resources/bin/docker ]; then
+              echo /Applications/Docker.app/Contents/Resources/bin/docker
+              exit 0
+            fi
+            exit 1
+          ''', returnStdout: true).trim()
+
+          env.DOCKER_BIN = dockerPath
+          echo "Using Docker CLI at: ${env.DOCKER_BIN}"
+        }
+        sh '''
+          set -euo pipefail
+          command -v java
+          command -v mvn
+          command -v git
+          test -n "${DOCKER_BIN}"
+          "${DOCKER_BIN}" compose version
+          java -version
+          mvn -version
+        '''
       }
     }
 
@@ -46,7 +84,7 @@ pipeline {
       parallel {
         stage('Docker Compose Lint') {
           steps {
-            sh 'docker compose config >/tmp/compose.rendered.yml'
+            sh '"${DOCKER_BIN}" compose config >/tmp/compose.rendered.yml'
           }
         }
 
@@ -108,7 +146,7 @@ EOF_POMS
             [ -z "$image_name" ] && image_name="app"
 
             echo "---- Building image for $ctx as local/${image_name}:${BUILD_NUMBER} ----"
-            docker build -t "local/${image_name}:${BUILD_NUMBER}" "$ctx"
+            "${DOCKER_BIN}" build -t "local/${image_name}:${BUILD_NUMBER}" "$ctx"
           done
         '''
       }
@@ -118,7 +156,14 @@ EOF_POMS
   post {
     always {
       echo "Build completed. Maven projects detected: ${env.MAVEN_PROJECT_COUNT}"
-      cleanWs(deleteDirs: true, disableDeferredWipeout: true)
+      script {
+        try {
+          cleanWs(deleteDirs: true, disableDeferredWipeout: true)
+        } catch (Exception ignored) {
+          // Fallback when Workspace Cleanup plugin is not installed.
+          deleteDir()
+        }
+      }
     }
     success {
       echo 'Pipeline succeeded.'
