@@ -289,6 +289,47 @@ EOF_POMS
         '''
       }
     }
+
+    stage('Kubernetes Smoke Test (Optional)') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return fileExists(params.HELM_CHART_PATH) }
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          BRANCH="${BRANCH_NAME:-${GIT_BRANCH:-unknown}}"
+          BRANCH="${BRANCH#origin/}"
+          DEPLOY_ENV="${TARGET_ENV}"
+          if [ "${DEPLOY_ENV}" = "auto" ]; then
+            if [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "master" ]; then
+              DEPLOY_ENV="prod"
+            elif [[ "${BRANCH}" == release/* ]] || [[ "${BRANCH}" == qa/* ]]; then
+              DEPLOY_ENV="test"
+            else
+              DEPLOY_ENV="dev"
+            fi
+          fi
+          DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
+          SERVICE_DNS="${HELM_RELEASE}.${DEPLOY_NAMESPACE}.svc.cluster.local"
+          SMOKE_POD="smoke-${BUILD_NUMBER}"
+
+          kubectl config use-context minikube
+          kubectl rollout status deployment/"${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" --timeout=120s
+
+          kubectl run "${SMOKE_POD}" \
+            -n "${DEPLOY_NAMESPACE}" \
+            --image=curlimages/curl:8.12.1 \
+            --restart=Never \
+            --command -- sh -c "curl -fsS http://${SERVICE_DNS}:80/ >/dev/null"
+          kubectl wait --for=condition=Ready pod/"${SMOKE_POD}" -n "${DEPLOY_NAMESPACE}" --timeout=90s || true
+          kubectl wait --for=condition=Succeeded pod/"${SMOKE_POD}" -n "${DEPLOY_NAMESPACE}" --timeout=90s
+          kubectl delete pod "${SMOKE_POD}" -n "${DEPLOY_NAMESPACE}" --ignore-not-found=true
+        '''
+      }
+    }
   }
 
   post {

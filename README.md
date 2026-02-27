@@ -118,3 +118,66 @@ This enforces review before production deployment.
 5. Run build.
 
 If Helm chart is not yet added at that path, deploy stage will be skipped.
+
+## 9) Low-Memory Local Runbook (Single-Environment Mode)
+If your laptop/Docker Desktop memory is limited, run one environment at a time in Minikube.
+
+### Start/verify Minikube
+```bash
+minikube start --driver=docker --cpus=2 --memory=3072 --disk-size=15g --kubernetes-version=v1.33.1
+kubectl config use-context minikube
+kubectl get nodes
+```
+
+### Deploy to dev
+In Jenkins **Build with Parameters**:
+- `DEPLOY_TO_MINIKUBE=true`
+- `TARGET_ENV=dev`
+
+Verify:
+```bash
+kubectl get all -n banking-dev
+```
+
+Cleanup before next environment:
+```bash
+helm uninstall banking-platform -n banking-dev
+```
+
+### Deploy to test
+In Jenkins **Build with Parameters**:
+- `DEPLOY_TO_MINIKUBE=true`
+- `TARGET_ENV=test`
+
+Verify:
+```bash
+kubectl get all -n banking-test
+```
+
+Cleanup before next environment:
+```bash
+helm uninstall banking-platform -n banking-test
+```
+
+### Deploy to prod
+In Jenkins **Build with Parameters**:
+- `DEPLOY_TO_MINIKUBE=true`
+- `TARGET_ENV=prod`
+- keep `REQUIRE_PROD_APPROVAL=true`
+- approve when prompted
+
+Verify:
+```bash
+kubectl get all -n banking-prod
+```
+
+Optional cleanup:
+```bash
+helm uninstall banking-platform -n banking-prod
+```
+
+### Pause/resume local cluster
+```bash
+minikube stop
+minikube start
+```
