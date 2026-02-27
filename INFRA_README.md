@@ -412,3 +412,123 @@ Local infrastructure foundation is complete and operational for iterative develo
 2. For low RAM, run one environment at a time if needed.
 3. Keep prod gate enabled even in local practice to preserve release discipline.
 4. Treat this repository as the reference blueprint for cloud transition.
+
+---
+
+## 17) Tech Stack Matrix (Detailed)
+
+| Layer | Technology | Where configured | Why chosen | Real-time banking use case | Problem solved locally |
+|---|---|---|---|---|---|
+| Language runtime | OpenJDK 21 | local toolchain | LTS runtime for modern Spring Boot | core services (accounts/payments/loans) | consistent Java build/runtime baseline |
+| Build tool | Maven | local toolchain + Jenkins `mvn` stage | standard Java dependency/build lifecycle | deterministic build of all microservices | reproducible CI compilation/tests |
+| SCM | Git + GitHub | repo + Jenkins SCM config | branch-based workflow and review governance | PR approvals before prod release | traceability + source-of-truth remote |
+| CI/CD | Jenkins | [Jenkinsfile](/Users/sivaprasad/Desktop/my-java-project/Jenkinsfile) | pipeline-as-code and stage gates | controlled release with approval + audit logs | automated validation/deploy/promote |
+| Container runtime | Docker Desktop | local runtime | standard container execution environment | run infra dependencies and service images | reproducible local infra execution |
+| Compose orchestration | Docker Compose | [docker-compose.yml](/Users/sivaprasad/Desktop/my-java-project/docker-compose.yml) | quick multi-service bootstrap | local platform foundation for all services | one-command startup of full dependency stack |
+| Kubernetes local cluster | Minikube | local runtime + Jenkins deploy stages | cloud-like orchestration semantics locally | namespace-based env simulation (dev/test/prod) | deployment pattern validation before cloud |
+| K8s CLI | kubectl | Jenkins + local ops | declarative cluster operations | operational checks, rollout and diagnostics | direct cluster observability/control |
+| Packaging/deploy | Helm | chart under `deploy/helm/banking-platform` | templated env-specific releases | promote same workload with env-specific values | consistent deploy contract across environments |
+| DB | PostgreSQL | compose + init SQL | ACID transactional store | account balances, payment ledgers, customer records | relational persistence and schema boundaries |
+| Cache | Redis | compose | low-latency cache/session layer | auth/session/token/cache acceleration | performance simulation and cache integration |
+| Queue messaging | RabbitMQ | compose | mature queue semantics | notifications, retries, asynchronous workflows | async decoupling simulation |
+| Event streaming | Kafka (KRaft) | compose | event-driven architecture backbone | event sourcing and domain event propagation | stream integration testing model |
+| IAM/OIDC | Keycloak | compose | standards-based identity provider | token issuance, role-based access | local authn/authz integration point |
+| Secrets | Vault (dev mode) | compose | secret lifecycle abstraction | DB creds/API secrets for services | early secret-management discipline |
+| Object storage | MinIO | compose | S3-compatible local storage | statements, documents, KYC uploads | object storage integration locally |
+| Tracing | Zipkin | compose | lightweight distributed tracing backend | cross-service request path debugging | latency/path visibility |
+| Metrics | Prometheus | `infra/prometheus` | pull-based metrics collection | SLI/SLO telemetry collection | quantitative health/behavior visibility |
+| Dashboards | Grafana | `infra/grafana` | visualization and dashboarding | operational and business KPI dashboards | fast observability feedback loops |
+| Vulnerability scanning | Trivy | Jenkins scan stage | shift-left security scanning | image gate before promotion | fail-fast on high/critical CVEs |
+| Network controls | NetworkPolicy | Helm `networkpolicy.yaml` | least-privilege service communication | segmenting service traffic domains | baseline zero-trust pattern simulation |
+| DR simulation | backup/restore scripts | `scripts/postgres-*.sh` | codified data recovery procedure | restore critical data after failure | repeatable backup/restore runbooks |
+
+---
+
+## 18) Git Command Timeline (What we ran and why)
+
+This is the practical SCM lifecycle used during setup and stabilization.
+
+### 18.1 Branch alignment and remote sync
+```bash
+git checkout master
+git pull origin master
+git checkout -b main
+git push -u origin main
+```
+Why:
+- create `main` from latest known stable branch,
+- ensure Jenkins and GitHub default branch converge on `main`.
+
+Alternative when `main` already existed:
+```bash
+git checkout main
+git pull origin main
+```
+
+### 18.2 Standard commit/push loop
+```bash
+git add <files...>
+git commit -m "<change description>"
+git push origin main
+```
+Why:
+- each pipeline/infrastructure fix captured as immutable change unit,
+- enabled Jenkins to consume exact SCM revisions.
+
+### 18.3 Validation commands used repeatedly
+```bash
+git status --short
+git log --oneline -5
+git diff --name-only
+git diff -- Jenkinsfile
+git remote -v
+```
+Why:
+- prevent accidental assumptions about what is committed,
+- diagnose “why Jenkins does not show latest behavior.”
+
+### 18.4 Branch governance migration
+Operational step (GitHub UI):
+- set default branch to `main`,
+- configure Jenkins branch specifier as `*/main`.
+
+Why:
+- avoids split-brain between `master` and `main`,
+- ensures one canonical deployment branch.
+
+---
+
+## 19) Error-to-Resolution Matrix (Root Cause Engineering View)
+
+| Symptom | Root cause | Diagnostic signal | Fix applied | File/process changed |
+|---|---|---|---|---|
+| Jenkins blocked local repo checkout | Git plugin security restriction on `file://` SCM | “ALLOW_LOCAL_CHECKOUT” error | moved to GitHub HTTPS remote + credentials | Jenkins job SCM config |
+| `docker: command not found` in Jenkins | service PATH differed from terminal PATH | failed in compose lint stage | explicit Docker binary resolution + persisted path usage | [Jenkinsfile](/Users/sivaprasad/Desktop/my-java-project/Jenkinsfile) |
+| `DOCKER_BIN` unbound variable | env propagation mismatch across steps | shell `set -u` failure | recompute/store/read path safely per stage | [Jenkinsfile](/Users/sivaprasad/Desktop/my-java-project/Jenkinsfile) |
+| Helm lint failed: missing `Chart.yaml` | chart skeleton absent | `helm lint` error | scaffolded valid chart with templates | `deploy/helm/banking-platform/*` |
+| Prod deployment timeout (`Progress deadline exceeded`) | insufficient Minikube memory + rollout surge behavior | events showed `FailedScheduling`/memory pressure | lowered replica/resources + rollout strategy tuning | `prod-values.yaml`, `values.yaml`, `deployment.yaml` |
+| Smoke test timeout with temp curl pod | extra smoke pod unschedulable on low-memory cluster | pod remained Pending/timeout | switched smoke test to endpoint + exec from app pod | [Jenkinsfile](/Users/sivaprasad/Desktop/my-java-project/Jenkinsfile) |
+| Trivy parse error on image name | image list concatenated into invalid token | combined string `curl...nginx...` | robust jsonpath extraction one image per line + label filtering | [Jenkinsfile](/Users/sivaprasad/Desktop/my-java-project/Jenkinsfile) |
+| Missing new params in Jenkins UI | UI-parameterized job overrode Jenkinsfile params | new params absent in Build with Parameters | disable manual UI parameterization and reload from Jenkinsfile | Jenkins job config process |
+| Auto build not triggered on push | no reachable webhook or polling config | push had no new build | use `Poll SCM` for localhost Jenkins or expose Jenkins publicly for webhook | Jenkins triggers config |
+
+---
+
+## 20) Real-time Use Cases by Phase
+
+### 20.1 During development
+- developer commits to `main`,
+- Jenkins auto deploys to `dev` then `test`,
+- smoke + vulnerability checks provide immediate release confidence signal.
+
+### 20.2 Pre-release gating
+- `TARGET_ENV=prod` requires approval,
+- optional release tag captures deploy-to-commit relation.
+
+### 20.3 Incident rehearsal
+- DB backup/restore scripts simulate recovery workflows,
+- observability stack supports root-cause triage pattern practice.
+
+### 20.4 Cloud-transition readiness
+- same pipeline logic and Helm packaging can migrate with minimal adaptation,
+- local constraints documented (memory, one-env-at-a-time), clarifying what changes in cloud.
