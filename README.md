@@ -80,3 +80,41 @@ Pipeline behavior:
 - Auto-detects Maven modules (`pom.xml`) and runs `mvn clean verify` for each.
 - Publishes JUnit reports and archives jars/wars.
 - Builds Docker images when `Dockerfile` files are present.
+
+## 8) Dev/Test/Prod promotion model with code review
+
+### Branching strategy
+- `feature/*` -> CI + optional deploy to `dev`
+- `develop` -> deploy to `dev`
+- `release/*` or `qa/*` -> deploy to `test`
+- `main`/`master` -> deploy to `prod` (with manual approval in Jenkins)
+
+### Code review policy (recommended)
+In GitHub branch protection:
+1. Protect `main` (or `master`).
+2. Require a pull request before merging.
+3. Require at least 1-2 approving reviews.
+4. Require status checks to pass (Jenkins job).
+5. Dismiss stale approvals on new commits.
+
+This enforces review before production deployment.
+
+### Jenkins parameters for promotion
+- `DEPLOY_TO_MINIKUBE=true` enables K8s deployment flow.
+- `TARGET_ENV=auto` maps env from branch (`dev/test/prod`).
+- Set `TARGET_ENV` manually only for controlled overrides.
+- `REQUIRE_PROD_APPROVAL=true` requires manual click approval before prod deploy.
+
+### Environment values files
+- `deploy/helm/banking-platform/environments/dev-values.yaml`
+- `deploy/helm/banking-platform/environments/test-values.yaml`
+- `deploy/helm/banking-platform/environments/prod-values.yaml`
+
+### Build with parameters example
+1. Open Jenkins job -> **Build with Parameters**.
+2. Set `DEPLOY_TO_MINIKUBE=true`.
+3. Leave `TARGET_ENV=auto`.
+4. Keep chart path as `deploy/helm/banking-platform`.
+5. Run build.
+
+If Helm chart is not yet added at that path, deploy stage will be skipped.

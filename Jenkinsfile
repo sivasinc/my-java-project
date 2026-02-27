@@ -1,6 +1,15 @@
 pipeline {
   agent any
 
+  parameters {
+    booleanParam(name: 'DEPLOY_TO_MINIKUBE', defaultValue: false, description: 'Deploy to local Minikube using Helm')
+    choice(name: 'TARGET_ENV', choices: ['auto', 'dev', 'test', 'prod'], description: 'Deployment environment (auto maps from branch)')
+    booleanParam(name: 'REQUIRE_PROD_APPROVAL', defaultValue: true, description: 'Require manual approval before production deployment')
+    string(name: 'HELM_RELEASE', defaultValue: 'banking-platform', description: 'Helm release name')
+    string(name: 'HELM_NAMESPACE', defaultValue: 'banking', description: 'Kubernetes namespace')
+    string(name: 'HELM_CHART_PATH', defaultValue: 'deploy/helm/banking-platform', description: 'Path to Helm chart in repo')
+  }
+
   options {
     timestamps()
     disableConcurrentBuilds()
@@ -13,6 +22,9 @@ pipeline {
     MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository -Djava.awt.headless=true'
     JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
     PATH = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
+    DEPLOY_ENV = ""
+    DEPLOY_NAMESPACE = ""
+    HELM_VALUES_FILE = ""
   }
 
   stages {
@@ -68,6 +80,38 @@ pipeline {
       }
     }
 
+    stage('Resolve Deployment Environment') {
+      when {
+        expression { return params.DEPLOY_TO_MINIKUBE }
+      }
+      steps {
+        script {
+          def rawBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+          def branch = rawBranch.replaceFirst(/^origin\\//, '')
+          def target = params.TARGET_ENV
+
+          if (target == 'auto') {
+            if (branch == 'main' || branch == 'master') {
+              target = 'prod'
+            } else if (branch.startsWith('release/') || branch.startsWith('qa/')) {
+              target = 'test'
+            } else {
+              target = 'dev'
+            }
+          }
+
+          env.DEPLOY_ENV = target
+          env.DEPLOY_NAMESPACE = "${params.HELM_NAMESPACE}-${env.DEPLOY_ENV}"
+          env.HELM_VALUES_FILE = "${params.HELM_CHART_PATH}/environments/${env.DEPLOY_ENV}-values.yaml"
+
+          echo "Branch: ${branch}"
+          echo "Resolved deployment environment: ${env.DEPLOY_ENV}"
+          echo "Resolved namespace: ${env.DEPLOY_NAMESPACE}"
+          echo "Helm values file: ${env.HELM_VALUES_FILE}"
+        }
+      }
+    }
+
     stage('Static Validation') {
       parallel {
         stage('Docker Compose Lint') {
@@ -90,6 +134,43 @@ pipeline {
               test -f infra/grafana/provisioning/dashboards/dashboards.yml
             '''
           }
+        }
+      }
+    }
+
+    stage('Kubernetes Precheck') {
+      when {
+        expression { return params.DEPLOY_TO_MINIKUBE }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          command -v kubectl
+          command -v helm
+          command -v minikube
+          minikube status
+          kubectl config use-context minikube
+          kubectl get nodes
+        '''
+      }
+    }
+
+    stage('Production Guardrails') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return env.DEPLOY_ENV == 'prod' }
+        }
+      }
+      steps {
+        script {
+          def rawBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+          def branch = rawBranch.replaceFirst(/^origin\\//, '')
+          if (!(branch == 'main' || branch == 'master')) {
+            error("Production deployments are allowed only from main/master. Current branch: ${branch}")
+          }
+          echo "Production branch guardrail passed on branch: ${branch}"
+          echo "Code review enforcement must be configured in GitHub branch protection (required PR approvals)."
         }
       }
     }
@@ -141,6 +222,37 @@ EOF_POMS
             echo "---- Building image for $ctx as local/${image_name}:${BUILD_NUMBER} ----"
             "$DOCKER_BIN" build -t "local/${image_name}:${BUILD_NUMBER}" "$ctx"
           done
+        '''
+      }
+    }
+
+    stage('Helm Deploy to Minikube (Optional)') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return fileExists(params.HELM_CHART_PATH) }
+        }
+      }
+      steps {
+        script {
+          if (env.DEPLOY_ENV == 'prod' && params.REQUIRE_PROD_APPROVAL) {
+            input message: "Approve production deployment to namespace ${env.DEPLOY_NAMESPACE}?", ok: 'Deploy'
+          }
+        }
+        sh '''
+          set -euo pipefail
+          kubectl config use-context minikube
+          kubectl get namespace "${DEPLOY_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${DEPLOY_NAMESPACE}"
+          helm lint "${HELM_CHART_PATH}"
+          HELM_EXTRA_ARGS=""
+          if [ -f "${HELM_VALUES_FILE}" ]; then
+            HELM_EXTRA_ARGS="-f ${HELM_VALUES_FILE}"
+          fi
+          helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART_PATH}" \
+            ${HELM_EXTRA_ARGS} \
+            --namespace "${DEPLOY_NAMESPACE}" \
+            --wait --timeout 5m
+          kubectl get pods -n "${DEPLOY_NAMESPACE}"
         '''
       }
     }
