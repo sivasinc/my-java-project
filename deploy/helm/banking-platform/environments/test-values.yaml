@@ -1,9 +1,11 @@
 environment: test
-replicaCount: 2
+replicaCount: 1
+env:
+  APP_SECURITY_ENABLED: "true"
 resources:
   requests:
-    cpu: 250m
-    memory: 512Mi
+    cpu: 200m
+    memory: 384Mi
   limits:
-    cpu: 1000m
+    cpu: 800m
     memory: 1Gi

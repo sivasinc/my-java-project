@@ -238,3 +238,28 @@ make restore-db FILE=backups/postgres/<backup-file.sql.gz>
 ./scripts/postgres-backup.sh
 ./scripts/postgres-restore.sh backups/postgres/<backup-file.sql.gz>
 ```
+
+## 13) Account-Service Workshop (Real App Deployment)
+
+The placeholder nginx deployment is now replaced by a real Spring Boot `account-service`.
+
+Build and test locally:
+```bash
+cd account-service
+mvn clean test
+```
+
+Build Docker image:
+```bash
+docker build -t local/account-service:latest account-service
+```
+
+Load image to Minikube runtime (required for local pull):
+```bash
+minikube image load local/account-service:latest
+```
+
+Then run Jenkins pipeline deploy (`TARGET_ENV=dev` or `auto`).
+
+Note:
+- Jenkins now builds `local/account-service:${BUILD_NUMBER}`, loads it into Minikube, and deploys using that same tag automatically.

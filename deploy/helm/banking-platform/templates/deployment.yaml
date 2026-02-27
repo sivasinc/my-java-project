@@ -24,7 +24,7 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: 80
+            - containerPort: {{ .Values.containerPort }}
               name: http
           env:
             - name: DEPLOY_ENV
@@ -32,6 +32,10 @@ spec:
                 configMapKeyRef:
                   name: {{ include "banking-platform.fullname" . }}-env
                   key: environment
+{{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+{{- end }}
 {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
             httpGet:

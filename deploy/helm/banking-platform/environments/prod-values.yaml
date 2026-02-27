@@ -1,9 +1,11 @@
 environment: prod
 replicaCount: 1
+env:
+  APP_SECURITY_ENABLED: "true"
 resources:
   requests:
     cpu: 200m
-    memory: 256Mi
+    memory: 384Mi
   limits:
     cpu: 700m
     memory: 768Mi

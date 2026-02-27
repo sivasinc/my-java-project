@@ -217,6 +217,12 @@ EOF_POMS
 
             echo "---- Building image for $ctx as local/${image_name}:${BUILD_NUMBER} ----"
             "$DOCKER_BIN" build -t "local/${image_name}:${BUILD_NUMBER}" "$ctx"
+            "$DOCKER_BIN" tag "local/${image_name}:${BUILD_NUMBER}" "local/${image_name}:latest"
+
+            if [ "${DEPLOY_TO_MINIKUBE}" = "true" ]; then
+              minikube image load "local/${image_name}:${BUILD_NUMBER}"
+              minikube image load "local/${image_name}:latest"
+            fi
           done
         '''
       }
@@ -252,11 +258,16 @@ EOF_POMS
             if [ -f "${HELM_VALUES_FILE}" ]; then
               HELM_EXTRA_ARGS="-f ${HELM_VALUES_FILE}"
             fi
+            HELM_SET_ARGS=""
+            if [ -f "account-service/Dockerfile" ]; then
+              HELM_SET_ARGS="--set image.repository=local/account-service --set image.tag=${BUILD_NUMBER}"
+            fi
 
             echo "Deploying ${HELM_RELEASE} to ${DEPLOY_NAMESPACE}"
             kubectl get namespace "${DEPLOY_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${DEPLOY_NAMESPACE}"
             if ! helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART_PATH}" \
               ${HELM_EXTRA_ARGS} \
+              ${HELM_SET_ARGS} \
               --namespace "${DEPLOY_NAMESPACE}" \
               --wait --timeout 5m; then
               echo "Helm deploy failed in ${DEPLOY_NAMESPACE}. Collecting diagnostics..."

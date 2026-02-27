@@ -8,33 +8,43 @@ deploymentStrategy:
     maxSurge: 0
 
 image:
-  repository: nginx
-  tag: "1.27-alpine"
+  repository: local/account-service
+  tag: "latest"
   pullPolicy: IfNotPresent
+
+containerPort: 8080
 
 service:
   type: ClusterIP
-  port: 80
+  port: 8080
+
+env:
+  APP_SECURITY_ENABLED: "false"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://host.minikube.internal:5432/accounts_db"
+  SPRING_DATASOURCE_USERNAME: "bank_admin"
+  SPRING_DATASOURCE_PASSWORD: "bank_admin_pass"
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://host.minikube.internal:8081/realms/banking"
+  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: "http://host.minikube.internal:9411/api/v2/spans"
 
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 300m
     memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 768Mi
 
 probes:
   liveness:
     enabled: true
-    path: /
-    initialDelaySeconds: 10
+    path: /actuator/health/liveness
+    initialDelaySeconds: 20
     periodSeconds: 10
   readiness:
     enabled: true
-    path: /
-    initialDelaySeconds: 5
-    periodSeconds: 5
+    path: /actuator/health/readiness
+    initialDelaySeconds: 15
+    periodSeconds: 10
 
 networkPolicy:
   enabled: true
