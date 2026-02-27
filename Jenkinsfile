@@ -241,6 +241,21 @@ EOF_POMS
         }
         sh '''
           set -euo pipefail
+          BRANCH="${BRANCH_NAME:-${GIT_BRANCH:-unknown}}"
+          BRANCH="${BRANCH#origin/}"
+          DEPLOY_ENV="${TARGET_ENV}"
+          if [ "${DEPLOY_ENV}" = "auto" ]; then
+            if [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "master" ]; then
+              DEPLOY_ENV="prod"
+            elif [[ "${BRANCH}" == release/* ]] || [[ "${BRANCH}" == qa/* ]]; then
+              DEPLOY_ENV="test"
+            else
+              DEPLOY_ENV="dev"
+            fi
+          fi
+          DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
+          HELM_VALUES_FILE="${HELM_CHART_PATH}/environments/${DEPLOY_ENV}-values.yaml"
+
           kubectl config use-context minikube
           kubectl get namespace "${DEPLOY_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${DEPLOY_NAMESPACE}"
           helm lint "${HELM_CHART_PATH}"
