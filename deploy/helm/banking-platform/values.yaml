@@ -1,6 +1,12 @@
 environment: dev
 replicaCount: 1
 
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 0
+
 image:
   repository: nginx
   tag: "1.27-alpine"
