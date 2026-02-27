@@ -235,8 +235,20 @@ EOF_POMS
       }
       steps {
         script {
-          if (env.DEPLOY_ENV == 'prod' && params.REQUIRE_PROD_APPROVAL) {
-            input message: "Approve production deployment to namespace ${env.DEPLOY_NAMESPACE}?", ok: 'Deploy'
+          def rawBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+          def branch = rawBranch.replaceFirst(/^origin\\//, '')
+          def resolvedEnv = params.TARGET_ENV
+          if (resolvedEnv == 'auto') {
+            if (branch == 'main' || branch == 'master') {
+              resolvedEnv = 'prod'
+            } else if (branch.startsWith('release/') || branch.startsWith('qa/')) {
+              resolvedEnv = 'test'
+            } else {
+              resolvedEnv = 'dev'
+            }
+          }
+          if (resolvedEnv == 'prod' && params.REQUIRE_PROD_APPROVAL) {
+            input message: "Approve production deployment to namespace ${params.HELM_NAMESPACE}-${resolvedEnv}?", ok: 'Deploy'
           }
         }
         sh '''
