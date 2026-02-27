@@ -337,7 +337,10 @@ EOF_POMS
           IMAGES_FILE="$(mktemp)"
           for DEPLOY_ENV in ${DEPLOY_TARGETS}; do
             DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
-            kubectl get pods -n "${DEPLOY_NAMESPACE}" -o jsonpath='{.items[*].spec.containers[*].image}' 2>/dev/null | tr ' ' '\n' >> "${IMAGES_FILE}" || true
+            kubectl get pods \
+              -n "${DEPLOY_NAMESPACE}" \
+              -l app.kubernetes.io/instance="${HELM_RELEASE}" \
+              -o jsonpath='{range .items[*].spec.containers[*]}{.image}{"\n"}{end}' 2>/dev/null >> "${IMAGES_FILE}" || true
           done
 
           sort -u "${IMAGES_FILE}" | sed '/^$/d' > "${IMAGES_FILE}.uniq"
