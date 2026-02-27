@@ -13,7 +13,6 @@ pipeline {
     MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository -Djava.awt.headless=true'
     JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
     PATH = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
-    DOCKER_BIN = ""
   }
 
   stages {
@@ -26,34 +25,23 @@ pipeline {
 
     stage('Toolchain Check') {
       steps {
-        script {
-          def dockerPath = sh(script: '''
-            set +e
-            if command -v docker >/dev/null 2>&1; then
-              command -v docker
-              exit 0
-            fi
-            if [ -x /usr/local/bin/docker ]; then
-              echo /usr/local/bin/docker
-              exit 0
-            fi
-            if [ -x /Applications/Docker.app/Contents/Resources/bin/docker ]; then
-              echo /Applications/Docker.app/Contents/Resources/bin/docker
-              exit 0
-            fi
-            exit 1
-          ''', returnStdout: true).trim()
-
-          env.DOCKER_BIN = dockerPath
-          echo "Using Docker CLI at: ${env.DOCKER_BIN}"
-        }
         sh '''
           set -euo pipefail
+          DOCKER_BIN="$(command -v docker || true)"
+          if [ -z "$DOCKER_BIN" ] && [ -x /usr/local/bin/docker ]; then
+            DOCKER_BIN=/usr/local/bin/docker
+          fi
+          if [ -z "$DOCKER_BIN" ] && [ -x /Applications/Docker.app/Contents/Resources/bin/docker ]; then
+            DOCKER_BIN=/Applications/Docker.app/Contents/Resources/bin/docker
+          fi
+          test -n "$DOCKER_BIN"
+          echo "Using Docker CLI at: $DOCKER_BIN"
+          echo "$DOCKER_BIN" > .docker_bin_path
+
           command -v java
           command -v mvn
           command -v git
-          test -n "${DOCKER_BIN}"
-          "${DOCKER_BIN}" compose version
+          "$DOCKER_BIN" compose version
           java -version
           mvn -version
         '''
@@ -84,7 +72,11 @@ pipeline {
       parallel {
         stage('Docker Compose Lint') {
           steps {
-            sh '"${DOCKER_BIN}" compose config >/tmp/compose.rendered.yml'
+            sh '''
+              set -euo pipefail
+              DOCKER_BIN="$(cat .docker_bin_path)"
+              "$DOCKER_BIN" compose config >/tmp/compose.rendered.yml
+            '''
           }
         }
 
@@ -139,6 +131,7 @@ EOF_POMS
       steps {
         sh '''
           set -euo pipefail
+          DOCKER_BIN="$(cat .docker_bin_path)"
 
           find . -name Dockerfile | while IFS= read -r df; do
             ctx=$(dirname "$df")
@@ -146,7 +139,7 @@ EOF_POMS
             [ -z "$image_name" ] && image_name="app"
 
             echo "---- Building image for $ctx as local/${image_name}:${BUILD_NUMBER} ----"
-            "${DOCKER_BIN}" build -t "local/${image_name}:${BUILD_NUMBER}" "$ctx"
+            "$DOCKER_BIN" build -t "local/${image_name}:${BUILD_NUMBER}" "$ctx"
           done
         '''
       }
