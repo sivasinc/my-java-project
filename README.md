@@ -191,3 +191,47 @@ To use a specific file in Jenkins:
 2. Keep `Pipeline script from SCM`.
 3. Set `Script Path` to `Jenkinsfile` or `Jenkinsfile.old`.
 4. Save and run a new build.
+
+## 11) Local Security/Governance Hardening
+
+### Trivy image scanning in Jenkins (optional)
+- Pipeline parameters:
+  - `ENABLE_TRIVY_SCAN=true` enables image vulnerability scanning after deploy.
+  - Scans deployed images for `HIGH,CRITICAL` vulnerabilities and fails build on findings.
+- Install Trivy on Jenkins host (if missing):
+```bash
+brew install trivy
+```
+
+### Release tags (optional)
+- Pipeline parameters:
+  - `CREATE_RELEASE_TAG=true`
+  - `TARGET_ENV=prod`
+  - `RELEASE_TAG_PREFIX=release` (customize as needed)
+- Result: pipeline creates and pushes a git tag like `release-<build>-<shortsha>`.
+
+### Basic NetworkPolicy
+- Helm chart now includes `templates/networkpolicy.yaml`.
+- Default behavior: allow ingress to app pods on port `80` from same namespace.
+- Controlled via chart values:
+  - `networkPolicy.enabled`
+  - `networkPolicy.ingressFromSameNamespaceOnly`
+
+## 12) Local Backup/Restore (PostgreSQL)
+
+### Create backup
+```bash
+make backup-db
+```
+Output files are stored in `backups/postgres/`.
+
+### Restore backup
+```bash
+make restore-db FILE=backups/postgres/<backup-file.sql.gz>
+```
+
+### Direct script usage
+```bash
+./scripts/postgres-backup.sh
+./scripts/postgres-restore.sh backups/postgres/<backup-file.sql.gz>
+```

@@ -1,0 +1,24 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "banking-platform.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "banking-platform.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "banking-platform.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - {{- if .Values.networkPolicy.ingressFromSameNamespaceOnly }}
+      from:
+        - podSelector: {}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 80
+{{- end }}

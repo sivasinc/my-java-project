@@ -5,6 +5,9 @@ pipeline {
     booleanParam(name: 'DEPLOY_TO_MINIKUBE', defaultValue: false, description: 'Deploy to local Minikube using Helm')
     choice(name: 'TARGET_ENV', choices: ['auto', 'dev', 'test', 'prod'], description: 'Deployment environment (auto maps from branch)')
     booleanParam(name: 'REQUIRE_PROD_APPROVAL', defaultValue: true, description: 'Require manual approval before production deployment')
+    booleanParam(name: 'ENABLE_TRIVY_SCAN', defaultValue: true, description: 'Run Trivy image scan for deployed workloads (if Trivy is installed)')
+    booleanParam(name: 'CREATE_RELEASE_TAG', defaultValue: false, description: 'Create and push a git release tag after successful deployment')
+    string(name: 'RELEASE_TAG_PREFIX', defaultValue: 'release', description: 'Prefix for release tag (example: release)')
     string(name: 'HELM_RELEASE', defaultValue: 'banking-platform', description: 'Helm release name')
     string(name: 'HELM_NAMESPACE', defaultValue: 'banking', description: 'Kubernetes namespace')
     string(name: 'HELM_CHART_PATH', defaultValue: 'deploy/helm/banking-platform', description: 'Path to Helm chart in repo')
@@ -305,6 +308,68 @@ EOF_POMS
               fi
             '
           done
+        '''
+      }
+    }
+
+    stage('Image Security Scan (Trivy Optional)') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.ENABLE_TRIVY_SCAN }
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          if ! command -v trivy >/dev/null 2>&1; then
+            echo "Trivy not installed on Jenkins agent. Skipping image scan."
+            exit 0
+          fi
+
+          if [ "${TARGET_ENV}" = "auto" ]; then
+            DEPLOY_TARGETS="dev test"
+          else
+            DEPLOY_TARGETS="${TARGET_ENV}"
+          fi
+
+          kubectl config use-context minikube
+          IMAGES_FILE="$(mktemp)"
+          for DEPLOY_ENV in ${DEPLOY_TARGETS}; do
+            DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
+            kubectl get pods -n "${DEPLOY_NAMESPACE}" -o jsonpath='{.items[*].spec.containers[*].image}' 2>/dev/null | tr ' ' '\n' >> "${IMAGES_FILE}" || true
+          done
+
+          sort -u "${IMAGES_FILE}" | sed '/^$/d' > "${IMAGES_FILE}.uniq"
+          if [ ! -s "${IMAGES_FILE}.uniq" ]; then
+            echo "No deployed container images found for Trivy scan."
+            exit 0
+          fi
+
+          while IFS= read -r image; do
+            echo "Scanning image with Trivy: ${image}"
+            trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress "${image}"
+          done < "${IMAGES_FILE}.uniq"
+        '''
+      }
+    }
+
+    stage('Create Release Tag (Optional)') {
+      when {
+        allOf {
+          expression { return params.CREATE_RELEASE_TAG }
+          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.TARGET_ENV == 'prod' }
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          COMMIT_SHA="$(git rev-parse --short HEAD)"
+          TAG_NAME="${RELEASE_TAG_PREFIX}-${BUILD_NUMBER}-${COMMIT_SHA}"
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "${TAG_NAME}"
+          echo "Created and pushed tag: ${TAG_NAME}"
         '''
       }
     }
