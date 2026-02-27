@@ -91,16 +91,23 @@ pipeline {
           def target = params.TARGET_ENV
 
           if (target == 'auto') {
-            target = 'dev,test'
+            if (branch == 'main' || branch == 'master') {
+              target = 'prod'
+            } else if (branch.startsWith('release/') || branch.startsWith('qa/')) {
+              target = 'test'
+            } else {
+              target = 'dev'
+            }
           }
 
           env.DEPLOY_ENV = target
-          env.DEPLOY_NAMESPACE = "n/a"
-          env.HELM_VALUES_FILE = "n/a"
+          env.DEPLOY_NAMESPACE = "${params.HELM_NAMESPACE}-${env.DEPLOY_ENV}"
+          env.HELM_VALUES_FILE = "${params.HELM_CHART_PATH}/environments/${env.DEPLOY_ENV}-values.yaml"
 
           echo "Branch: ${branch}"
-          echo "Resolved deployment target(s): ${env.DEPLOY_ENV}"
-          echo "Namespace/values are resolved per target environment during deploy stage."
+          echo "Resolved deployment environment: ${env.DEPLOY_ENV}"
+          echo "Resolved namespace: ${env.DEPLOY_NAMESPACE}"
+          echo "Helm values file: ${env.HELM_VALUES_FILE}"
         }
       }
     }
@@ -152,7 +159,7 @@ pipeline {
       when {
         allOf {
           expression { return params.DEPLOY_TO_MINIKUBE }
-          expression { return params.TARGET_ENV == 'prod' }
+          expression { return env.DEPLOY_ENV == 'prod' }
         }
       }
       steps {
@@ -228,42 +235,57 @@ EOF_POMS
       }
       steps {
         script {
-          if (params.TARGET_ENV == 'prod' && params.REQUIRE_PROD_APPROVAL) {
-            input message: "Approve production deployment to namespace ${params.HELM_NAMESPACE}-prod?", ok: 'Deploy'
+          def rawBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+          def branch = rawBranch.replaceFirst(/^origin\\//, '')
+          def resolvedEnv = params.TARGET_ENV
+          if (resolvedEnv == 'auto') {
+            if (branch == 'main' || branch == 'master') {
+              resolvedEnv = 'prod'
+            } else if (branch.startsWith('release/') || branch.startsWith('qa/')) {
+              resolvedEnv = 'test'
+            } else {
+              resolvedEnv = 'dev'
+            }
+          }
+          if (resolvedEnv == 'prod' && params.REQUIRE_PROD_APPROVAL) {
+            input message: "Approve production deployment to namespace ${params.HELM_NAMESPACE}-${resolvedEnv}?", ok: 'Deploy'
           }
         }
         sh '''
           set -euo pipefail
-          kubectl config use-context minikube
-          helm lint "${HELM_CHART_PATH}"
-          if [ "${TARGET_ENV}" = "auto" ]; then
-            DEPLOY_TARGETS="dev test"
-          else
-            DEPLOY_TARGETS="${TARGET_ENV}"
+          BRANCH="${BRANCH_NAME:-${GIT_BRANCH:-unknown}}"
+          BRANCH="${BRANCH#origin/}"
+          DEPLOY_ENV="${TARGET_ENV}"
+          if [ "${DEPLOY_ENV}" = "auto" ]; then
+            if [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "master" ]; then
+              DEPLOY_ENV="prod"
+            elif [[ "${BRANCH}" == release/* ]] || [[ "${BRANCH}" == qa/* ]]; then
+              DEPLOY_ENV="test"
+            else
+              DEPLOY_ENV="dev"
+            fi
           fi
+          DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
+          HELM_VALUES_FILE="${HELM_CHART_PATH}/environments/${DEPLOY_ENV}-values.yaml"
 
-          for DEPLOY_ENV in ${DEPLOY_TARGETS}; do
-            DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
-            HELM_VALUES_FILE="${HELM_CHART_PATH}/environments/${DEPLOY_ENV}-values.yaml"
-            HELM_EXTRA_ARGS=""
-            if [ -f "${HELM_VALUES_FILE}" ]; then
-              HELM_EXTRA_ARGS="-f ${HELM_VALUES_FILE}"
-            fi
-
-            echo "Deploying ${HELM_RELEASE} to ${DEPLOY_NAMESPACE}"
-            kubectl get namespace "${DEPLOY_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${DEPLOY_NAMESPACE}"
-            if ! helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART_PATH}" \
-              ${HELM_EXTRA_ARGS} \
-              --namespace "${DEPLOY_NAMESPACE}" \
-              --wait --timeout 5m; then
-              echo "Helm deploy failed in ${DEPLOY_NAMESPACE}. Collecting diagnostics..."
-              kubectl get all -n "${DEPLOY_NAMESPACE}" || true
-              kubectl describe deploy "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" || true
-              kubectl get events -n "${DEPLOY_NAMESPACE}" --sort-by=.metadata.creationTimestamp | tail -n 40 || true
-              exit 1
-            fi
-            kubectl get pods -n "${DEPLOY_NAMESPACE}"
-          done
+          kubectl config use-context minikube
+          kubectl get namespace "${DEPLOY_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${DEPLOY_NAMESPACE}"
+          helm lint "${HELM_CHART_PATH}"
+          HELM_EXTRA_ARGS=""
+          if [ -f "${HELM_VALUES_FILE}" ]; then
+            HELM_EXTRA_ARGS="-f ${HELM_VALUES_FILE}"
+          fi
+          if ! helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART_PATH}" \
+            ${HELM_EXTRA_ARGS} \
+            --namespace "${DEPLOY_NAMESPACE}" \
+            --wait --timeout 5m; then
+            echo "Helm deploy failed. Collecting diagnostics..."
+            kubectl get all -n "${DEPLOY_NAMESPACE}" || true
+            kubectl describe deploy "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" || true
+            kubectl get events -n "${DEPLOY_NAMESPACE}" --sort-by=.metadata.creationTimestamp | tail -n 40 || true
+            exit 1
+          fi
+          kubectl get pods -n "${DEPLOY_NAMESPACE}"
         '''
       }
     }
@@ -278,33 +300,37 @@ EOF_POMS
       steps {
         sh '''
           set -euo pipefail
-          kubectl config use-context minikube
-          if [ "${TARGET_ENV}" = "auto" ]; then
-            DEPLOY_TARGETS="dev test"
-          else
-            DEPLOY_TARGETS="${TARGET_ENV}"
+          BRANCH="${BRANCH_NAME:-${GIT_BRANCH:-unknown}}"
+          BRANCH="${BRANCH#origin/}"
+          DEPLOY_ENV="${TARGET_ENV}"
+          if [ "${DEPLOY_ENV}" = "auto" ]; then
+            if [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "master" ]; then
+              DEPLOY_ENV="prod"
+            elif [[ "${BRANCH}" == release/* ]] || [[ "${BRANCH}" == qa/* ]]; then
+              DEPLOY_ENV="test"
+            else
+              DEPLOY_ENV="dev"
+            fi
           fi
+          DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
 
-          for DEPLOY_ENV in ${DEPLOY_TARGETS}; do
-            DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
-            echo "Running smoke test in ${DEPLOY_NAMESPACE}"
-            kubectl rollout status deployment/"${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" --timeout=120s
+          kubectl config use-context minikube
+          kubectl rollout status deployment/"${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" --timeout=120s
 
-            ENDPOINT_IP="$(kubectl get endpoints "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" -o jsonpath='{.subsets[0].addresses[0].ip}' || true)"
-            test -n "${ENDPOINT_IP}"
+          ENDPOINT_IP="$(kubectl get endpoints "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" -o jsonpath='{.subsets[0].addresses[0].ip}' || true)"
+          test -n "${ENDPOINT_IP}"
 
-            APP_POD="$(kubectl get pods -n "${DEPLOY_NAMESPACE}" -l app.kubernetes.io/instance="${HELM_RELEASE}" -o jsonpath='{.items[0].metadata.name}')"
-            test -n "${APP_POD}"
-            kubectl exec -n "${DEPLOY_NAMESPACE}" "${APP_POD}" -- sh -c '
-              if command -v wget >/dev/null 2>&1; then
-                wget -q -O- http://127.0.0.1/ >/dev/null
-              elif command -v curl >/dev/null 2>&1; then
-                curl -fsS http://127.0.0.1/ >/dev/null
-              else
-                echo "No curl/wget in container; endpoint check already passed."
-              fi
-            '
-          done
+          APP_POD="$(kubectl get pods -n "${DEPLOY_NAMESPACE}" -l app.kubernetes.io/instance="${HELM_RELEASE}" -o jsonpath='{.items[0].metadata.name}')"
+          test -n "${APP_POD}"
+          kubectl exec -n "${DEPLOY_NAMESPACE}" "${APP_POD}" -- sh -c '
+            if command -v wget >/dev/null 2>&1; then
+              wget -q -O- http://127.0.0.1/ >/dev/null
+            elif command -v curl >/dev/null 2>&1; then
+              curl -fsS http://127.0.0.1/ >/dev/null
+            else
+              echo "No curl/wget in container; endpoint check already passed."
+            fi
+          '
         '''
       }
     }

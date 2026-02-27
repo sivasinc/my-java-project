@@ -101,8 +101,8 @@ This enforces review before production deployment.
 
 ### Jenkins parameters for promotion
 - `DEPLOY_TO_MINIKUBE=true` enables K8s deployment flow.
-- `TARGET_ENV=auto` maps env from branch (`dev/test/prod`).
-- Set `TARGET_ENV` manually only for controlled overrides.
+- `TARGET_ENV=auto` runs sequential promotion to `dev` then `test`.
+- Set `TARGET_ENV=prod` explicitly for production deployment.
 - `REQUIRE_PROD_APPROVAL=true` requires manual click approval before prod deploy.
 
 ### Environment values files
@@ -181,3 +181,13 @@ helm uninstall banking-platform -n banking-prod
 minikube stop
 minikube start
 ```
+
+## 10) Jenkinsfile variants
+- `Jenkinsfile`: current pipeline (supports `TARGET_ENV=auto` for `dev -> test` and explicit gated `prod`).
+- `Jenkinsfile.old`: previous pipeline version kept as backup/reference.
+
+To use a specific file in Jenkins:
+1. Job `Configure` -> `Pipeline`.
+2. Keep `Pipeline script from SCM`.
+3. Set `Script Path` to `Jenkinsfile` or `Jenkinsfile.old`.
+4. Save and run a new build.
