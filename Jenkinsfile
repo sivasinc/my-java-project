@@ -447,11 +447,42 @@ EOF_POMS
               *) LOCAL_PORT=18090 ;;
             esac
 
-            kubectl port-forward -n "${DEPLOY_NAMESPACE}" svc/"${HELM_RELEASE}" "${LOCAL_PORT}:8080" >/tmp/pf-${DEPLOY_NAMESPACE}.log 2>&1 &
+            PF_LOG="/tmp/pf-${DEPLOY_NAMESPACE}.log"
+            kubectl port-forward -n "${DEPLOY_NAMESPACE}" svc/"${HELM_RELEASE}" "${LOCAL_PORT}:8080" >"${PF_LOG}" 2>&1 &
             PF_PID=$!
-            sleep 3
-            HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "http://127.0.0.1:${LOCAL_PORT}/api/accounts/00000000-0000-0000-0000-000000000000")"
+
+            # Wait until local port-forward is accepting connections.
+            READY=0
+            i=0
+            while [ "$i" -lt 20 ]; do
+              if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${LOCAL_PORT}/actuator/health"; then
+                READY=1
+                break
+              fi
+              i=$((i+1))
+              sleep 1
+            done
+            if [ "${READY}" -ne 1 ]; then
+              echo "Port-forward did not become ready for ${DEPLOY_NAMESPACE}"
+              cat "${PF_LOG}" || true
+              kill "${PF_PID}" || true
+              wait "${PF_PID}" 2>/dev/null || true
+              exit 1
+            fi
+
+            HTTP_CODE="000"
+            i=0
+            while [ "$i" -lt 10 ]; do
+              HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "Authorization: Bearer ${TOKEN}" "http://127.0.0.1:${LOCAL_PORT}/api/accounts/00000000-0000-0000-0000-000000000000" || true)"
+              if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "404" ] || [ "${HTTP_CODE}" = "401" ] || [ "${HTTP_CODE}" = "403" ]; then
+                break
+              fi
+              i=$((i+1))
+              sleep 1
+            done
+
             kill "${PF_PID}" || true
+            wait "${PF_PID}" 2>/dev/null || true
 
             if [ "${HTTP_CODE}" != "404" ] && [ "${HTTP_CODE}" != "200" ]; then
               echo "Auth smoke failed for ${DEPLOY_NAMESPACE}. HTTP code: ${HTTP_CODE}"
