@@ -317,9 +317,9 @@ EOF_POMS
             test -n "${APP_POD}"
             kubectl exec -n "${DEPLOY_NAMESPACE}" "${APP_POD}" -- sh -c '
               if command -v wget >/dev/null 2>&1; then
-                wget -q -O- http://127.0.0.1/ >/dev/null
+                wget -q -O- http://127.0.0.1/actuator/health >/dev/null
               elif command -v curl >/dev/null 2>&1; then
-                curl -fsS http://127.0.0.1/ >/dev/null
+                curl -fsS http://127.0.0.1/actuator/health >/dev/null
               else
                 echo "No curl/wget in container; endpoint check already passed."
               fi
