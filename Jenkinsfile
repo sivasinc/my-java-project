@@ -6,6 +6,12 @@ pipeline {
     choice(name: 'TARGET_ENV', choices: ['auto', 'dev', 'test', 'prod'], description: 'Deployment environment (auto maps from branch)')
     booleanParam(name: 'REQUIRE_PROD_APPROVAL', defaultValue: true, description: 'Require manual approval before production deployment')
     booleanParam(name: 'ENABLE_TRIVY_SCAN', defaultValue: true, description: 'Run Trivy image scan for deployed workloads (if Trivy is installed)')
+    booleanParam(name: 'ENABLE_AUTH_SMOKE_TEST', defaultValue: true, description: 'Validate protected API endpoint with Keycloak-issued JWT')
+    string(name: 'KEYCLOAK_REALM', defaultValue: 'banking', description: 'Keycloak realm for JWT smoke test')
+    string(name: 'KEYCLOAK_CLIENT_ID', defaultValue: 'account-service-client', description: 'OIDC client id for token request')
+    password(name: 'KEYCLOAK_CLIENT_SECRET', defaultValue: '', description: 'OIDC client secret (leave empty for public clients)')
+    string(name: 'KEYCLOAK_USERNAME', defaultValue: 'bankuser', description: 'Username for password grant smoke test')
+    password(name: 'KEYCLOAK_PASSWORD', defaultValue: '', description: 'Password for password grant smoke test')
     booleanParam(name: 'CREATE_RELEASE_TAG', defaultValue: false, description: 'Create and push a git release tag after successful deployment')
     string(name: 'RELEASE_TAG_PREFIX', defaultValue: 'release', description: 'Prefix for release tag (example: release)')
     string(name: 'HELM_RELEASE', defaultValue: 'banking-platform', description: 'Helm release name')
@@ -364,6 +370,86 @@ EOF_POMS
             echo "Scanning image with Trivy: ${image}"
             trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress "${image}"
           done < "${IMAGES_FILE}.uniq"
+        '''
+      }
+    }
+
+    stage('OIDC Auth Smoke Test (Optional)') {
+      when {
+        allOf {
+          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.ENABLE_AUTH_SMOKE_TEST }
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          if [ -z "${KEYCLOAK_PASSWORD}" ]; then
+            echo "KEYCLOAK_PASSWORD is empty. Skipping OIDC auth smoke test."
+            exit 0
+          fi
+
+          if [ "${TARGET_ENV}" = "auto" ]; then
+            DEPLOY_TARGETS="dev test"
+          else
+            DEPLOY_TARGETS="${TARGET_ENV}"
+          fi
+
+          SECRET_ARGS=()
+          if [ -n "${KEYCLOAK_CLIENT_SECRET}" ]; then
+            SECRET_ARGS+=(--data-urlencode "client_secret=${KEYCLOAK_CLIENT_SECRET}")
+          fi
+
+          TOKEN_RESPONSE="$(curl -s -X POST "http://host.minikube.internal:8081/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token" \
+            --resolve "host.minikube.internal:8081:127.0.0.1" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "grant_type=password" \
+            --data-urlencode "client_id=${KEYCLOAK_CLIENT_ID}" \
+            --data-urlencode "username=${KEYCLOAK_USERNAME}" \
+            --data-urlencode "password=${KEYCLOAK_PASSWORD}" \
+            "${SECRET_ARGS[@]}")"
+
+          TOKEN=""
+          if command -v jq >/dev/null 2>&1; then
+            TOKEN="$(echo "${TOKEN_RESPONSE}" | jq -r '.access_token // empty')"
+          else
+            TOKEN="$(echo "${TOKEN_RESPONSE}" | sed -n 's/.*"access_token":"\\([^"]*\\)".*/\\1/p')"
+          fi
+
+          if [ -z "${TOKEN}" ]; then
+            echo "OIDC token retrieval failed. Response:"
+            echo "${TOKEN_RESPONSE}"
+            exit 1
+          fi
+
+          kubectl config use-context minikube
+          for DEPLOY_ENV in ${DEPLOY_TARGETS}; do
+            DEPLOY_NAMESPACE="${HELM_NAMESPACE}-${DEPLOY_ENV}"
+            APP_SECURITY_ENABLED_VALUE="$(kubectl get deploy "${HELM_RELEASE}" -n "${DEPLOY_NAMESPACE}" -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\\n"}{end}' | grep '^APP_SECURITY_ENABLED=' | cut -d= -f2 || true)"
+            if [ "${APP_SECURITY_ENABLED_VALUE}" != "true" ]; then
+              echo "Skipping auth smoke for ${DEPLOY_NAMESPACE}; APP_SECURITY_ENABLED=${APP_SECURITY_ENABLED_VALUE:-unset}"
+              continue
+            fi
+
+            case "${DEPLOY_ENV}" in
+              dev) LOCAL_PORT=18080 ;;
+              test) LOCAL_PORT=18081 ;;
+              prod) LOCAL_PORT=18082 ;;
+              *) LOCAL_PORT=18090 ;;
+            esac
+
+            kubectl port-forward -n "${DEPLOY_NAMESPACE}" svc/"${HELM_RELEASE}" "${LOCAL_PORT}:8080" >/tmp/pf-${DEPLOY_NAMESPACE}.log 2>&1 &
+            PF_PID=$!
+            sleep 3
+            HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "http://127.0.0.1:${LOCAL_PORT}/api/accounts/00000000-0000-0000-0000-000000000000")"
+            kill "${PF_PID}" || true
+
+            if [ "${HTTP_CODE}" != "404" ] && [ "${HTTP_CODE}" != "200" ]; then
+              echo "Auth smoke failed for ${DEPLOY_NAMESPACE}. HTTP code: ${HTTP_CODE}"
+              exit 1
+            fi
+            echo "Auth smoke passed for ${DEPLOY_NAMESPACE}. HTTP code: ${HTTP_CODE}"
+          done
         '''
       }
     }

@@ -206,6 +206,19 @@ To use a specific file in Jenkins:
 brew install trivy
 ```
 
+### OIDC/JWT smoke test in Jenkins (optional)
+- Pipeline parameters:
+  - `ENABLE_AUTH_SMOKE_TEST=true`
+  - `KEYCLOAK_REALM=banking`
+  - `KEYCLOAK_CLIENT_ID=account-service-client`
+  - `KEYCLOAK_CLIENT_SECRET=<client-secret>` (empty for public clients)
+  - `KEYCLOAK_USERNAME=bankuser`
+  - `KEYCLOAK_PASSWORD=<user-password>`
+- Behavior:
+  - Fetches token from Keycloak,
+  - Calls protected API endpoint with Bearer token,
+  - Fails build if token retrieval or auth validation fails.
+
 ### Release tags (optional)
 - Pipeline parameters:
   - `CREATE_RELEASE_TAG=true`
