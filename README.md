@@ -207,6 +207,17 @@ To use a specific file in Jenkins:
 brew install trivy
 ```
 
+### SonarQube code analysis in Jenkins (optional)
+- Start SonarQube locally:
+```bash
+docker compose --env-file .env up -d sonarqube
+```
+- URL: `http://localhost:9002`
+- Jenkins parameters:
+  - `ENABLE_SONARQUBE_SCAN=true`
+  - `SONAR_HOST_URL=http://localhost:9002`
+  - `SONAR_TOKEN=<token>` (optional in local anonymous mode)
+
 ### OIDC/JWT smoke test in Jenkins (optional)
 - Pipeline parameters:
   - `ENABLE_AUTH_SMOKE_TEST=true`
@@ -313,3 +324,23 @@ How this helps in real banking-like runtime operations:
 8. `Foundation for data/AI workflows`:
 - current platform gives the required base to add Kafka real-time pipelines, Airflow batch jobs, and model training pipelines.
 - enables a progressive path from CRUD app to analytics + ML system.
+
+## 15) Keep Progress Forever (Task Tracking Workflow)
+
+Use these files as your long-term memory:
+
+1. Master roadmap:
+- [PHASED_MASTER_TASKLIST.md](/Users/sivaprasad/Desktop/my-java-project/PHASED_MASTER_TASKLIST.md)
+
+2. Session-by-session implementation log:
+- [docs/WORK_LOG.md](/Users/sivaprasad/Desktop/my-java-project/docs/WORK_LOG.md)
+
+3. Reusable command catalog:
+- [docs/COMMANDS.md](/Users/sivaprasad/Desktop/my-java-project/docs/COMMANDS.md)
+
+Recommended workflow for every task:
+1. Pick next task ID from `PHASED_MASTER_TASKLIST.md`.
+2. Implement code/config changes.
+3. Run validation commands.
+4. Record evidence in `docs/WORK_LOG.md`.
+5. Commit task with clear message and push.

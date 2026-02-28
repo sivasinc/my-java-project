@@ -7,6 +7,9 @@ pipeline {
     booleanParam(name: 'REQUIRE_PROD_APPROVAL', defaultValue: true, description: 'Require manual approval before production deployment')
     booleanParam(name: 'ENABLE_TRIVY_SCAN', defaultValue: true, description: 'Run Trivy image scan for deployed workloads (if Trivy is installed)')
     booleanParam(name: 'ENABLE_AUTH_SMOKE_TEST', defaultValue: true, description: 'Validate protected API endpoint with Keycloak-issued JWT')
+    booleanParam(name: 'ENABLE_SONARQUBE_SCAN', defaultValue: false, description: 'Run SonarQube static analysis (requires local SonarQube server)')
+    string(name: 'SONAR_HOST_URL', defaultValue: 'http://localhost:9002', description: 'SonarQube server URL')
+    password(name: 'SONAR_TOKEN', defaultValue: '', description: 'SonarQube token (optional for local anonymous mode)')
     string(name: 'KEYCLOAK_REALM', defaultValue: 'banking', description: 'Keycloak realm for JWT smoke test')
     string(name: 'KEYCLOAK_CLIENT_ID', defaultValue: 'account-service-client', description: 'OIDC client id for token request')
     password(name: 'KEYCLOAK_CLIENT_SECRET', defaultValue: '', description: 'OIDC client secret (leave empty for public clients)')
@@ -201,6 +204,34 @@ EOF_POMS
           junit allowEmptyResults: true, keepLongStdio: true, testResults: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
           archiveArtifacts allowEmptyArchive: true, artifacts: '**/target/*.jar, **/target/*.war'
         }
+      }
+    }
+
+    stage('SonarQube Scan (Optional)') {
+      when {
+        allOf {
+          expression { env.MAVEN_PROJECT_COUNT != '0' }
+          expression { return params.ENABLE_SONARQUBE_SCAN }
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+
+          while IFS= read -r pom; do
+            [ -z "$pom" ] && continue
+            dir=$(dirname "$pom")
+
+            echo "---- Running SonarQube scan in $dir ----"
+            if [ -n "${SONAR_TOKEN}" ]; then
+              (cd "$dir" && mvn -B -ntp sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.token="${SONAR_TOKEN}")
+            else
+              (cd "$dir" && mvn -B -ntp sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL}")
+            fi
+          done <<EOF_POMS
+${MAVEN_POMS}
+EOF_POMS
+        '''
       }
     }
 

@@ -150,6 +150,17 @@ services:
     depends_on:
       - prometheus
 
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: bank-sonarqube
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    ports:
+      - "9002:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+
 volumes:
   postgres_data:
   redis_data:
@@ -158,3 +169,5 @@ volumes:
   minio_data:
   prometheus_data:
   grafana_data:
+  sonarqube_data:
+  sonarqube_extensions:
