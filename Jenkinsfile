@@ -316,13 +316,22 @@ EOF_POMS
             APP_POD="$(kubectl get pods -n "${DEPLOY_NAMESPACE}" -l app.kubernetes.io/instance="${HELM_RELEASE}" -o jsonpath='{.items[0].metadata.name}')"
             test -n "${APP_POD}"
             kubectl exec -n "${DEPLOY_NAMESPACE}" "${APP_POD}" -- sh -c '
-              if command -v wget >/dev/null 2>&1; then
-                wget -q -O- http://127.0.0.1/actuator/health >/dev/null
-              elif command -v curl >/dev/null 2>&1; then
-                curl -fsS http://127.0.0.1/actuator/health >/dev/null
-              else
+              if ! command -v wget >/dev/null 2>&1 && ! command -v curl >/dev/null 2>&1; then
                 echo "No curl/wget in container; endpoint check already passed."
+                exit 0
               fi
+
+              i=0
+              while [ "$i" -lt 12 ]; do
+                if command -v wget >/dev/null 2>&1; then
+                  wget -q -O- http://127.0.0.1:8080/actuator/health >/dev/null 2>&1 && exit 0
+                else
+                  curl -fsS http://127.0.0.1:8080/actuator/health >/dev/null 2>&1 && exit 0
+                fi
+                i=$((i+1))
+                sleep 5
+              done
+              exit 1
             '
           done
         '''
