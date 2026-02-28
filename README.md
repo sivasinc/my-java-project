@@ -4,6 +4,7 @@ This repository provides a production-style local platform for a banking microse
 
 Full detailed technical handbook (inception to current):  
 - [INFRA_README.md](/Users/sivaprasad/Desktop/my-java-project/INFRA_README.md)
+- [SERVICE_README.md](/Users/sivaprasad/Desktop/my-java-project/SERVICE_README.md)
 
 ## Included Services
 - PostgreSQL: transactional data + per-service databases
