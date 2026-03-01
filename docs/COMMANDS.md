@@ -86,3 +86,14 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN
 lsof -nP -iTCP:5432 -sTCP:LISTEN
 pg_isready -h localhost -p 5432
 ```
+
+## 11) Jenkins Build (No Deploy)
+In Jenkins UI -> **Build with Parameters**:
+- `DEPLOY_TO_MINIKUBE=false`
+- `ENABLE_SONARQUBE_SCAN=false` (or true if Sonar server is up)
+- keep other defaults
+
+Expected Maven stage behavior:
+- runs `mvn clean verify`
+- executes unit/controller/repository/Cucumber BDD tests
+- Testcontainers integration test skips if Docker is unavailable

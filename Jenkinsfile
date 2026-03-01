@@ -94,13 +94,13 @@ pipeline {
 
     stage('Resolve Deployment Environment') {
       when {
-        expression { return params.DEPLOY_TO_MINIKUBE }
+        expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
       }
       steps {
         script {
           def rawBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
           def branch = rawBranch.replaceFirst(/^origin\\//, '')
-          def target = params.TARGET_ENV
+          def target = params.TARGET_ENV ?: 'auto'
 
           if (target == 'auto') {
             target = 'dev,test'
@@ -145,7 +145,7 @@ pipeline {
 
     stage('Kubernetes Precheck') {
       when {
-        expression { return params.DEPLOY_TO_MINIKUBE }
+        expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
       }
       steps {
         sh '''
@@ -163,7 +163,7 @@ pipeline {
     stage('Production Guardrails') {
       when {
         allOf {
-          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
           expression { return params.TARGET_ENV == 'prod' }
         }
       }
@@ -180,7 +180,7 @@ pipeline {
       }
     }
 
-    stage('Maven Build & Unit Tests') {
+    stage('Maven Build & Tests') {
       when {
         expression { env.MAVEN_PROJECT_COUNT != '0' }
       }
@@ -268,7 +268,7 @@ EOF_POMS
     stage('Helm Deploy to Minikube (Optional)') {
       when {
         allOf {
-          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
           expression { return fileExists(params.HELM_CHART_PATH) }
         }
       }
@@ -322,7 +322,7 @@ EOF_POMS
     stage('Kubernetes Smoke Test (Optional)') {
       when {
         allOf {
-          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
           expression { return fileExists(params.HELM_CHART_PATH) }
         }
       }
@@ -372,7 +372,7 @@ EOF_POMS
     stage('Image Security Scan (Trivy Optional)') {
       when {
         allOf {
-          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
           expression { return params.ENABLE_TRIVY_SCAN }
         }
       }
@@ -417,7 +417,7 @@ EOF_POMS
     stage('OIDC Auth Smoke Test (Optional)') {
       when {
         allOf {
-          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
           expression { return params.ENABLE_AUTH_SMOKE_TEST }
         }
       }
@@ -529,7 +529,7 @@ EOF_POMS
       when {
         allOf {
           expression { return params.CREATE_RELEASE_TAG }
-          expression { return params.DEPLOY_TO_MINIKUBE }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
           expression { return params.TARGET_ENV == 'prod' }
         }
       }

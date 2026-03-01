@@ -94,13 +94,13 @@ Status legend:
 
 | ID | Task | Why | Output | Status |
 |---|---|---|---|---|
-| 61 | Add SonarQube service and Jenkins sonar stage | static quality governance | quality report + gate | NEXT |
+| 61 | Add SonarQube service and Jenkins sonar stage | static quality governance | quality report + gate | DONE |
 | 62 | Add JaCoCo coverage thresholds | enforce test depth | coverage fail gate | NEXT |
-| 63 | Add unit tests for service logic branches | regression prevention | deterministic unit suite | NEXT |
-| 64 | Add controller tests (`@WebMvcTest`) | API behavior confidence | 200/201/400/404/409 tests | NEXT |
-| 65 | Add repository tests (`@DataJpaTest`) | query correctness | repository confidence | NEXT |
-| 66 | Add Testcontainers integration tests | real DB integration confidence | e2e DB-backed tests | NEXT |
-| 67 | Add Cucumber BDD tests | business-readable acceptance | executable feature specs | NEXT |
+| 63 | Add unit tests for service logic branches | regression prevention | deterministic unit suite | DONE |
+| 64 | Add controller tests (`@WebMvcTest`) | API behavior confidence | 200/201/400/404/409 tests | DONE |
+| 65 | Add repository tests (`@DataJpaTest`) | query correctness | repository confidence | DONE |
+| 66 | Add Testcontainers integration tests | real DB integration confidence | e2e DB-backed tests | DONE |
+| 67 | Add Cucumber BDD tests | business-readable acceptance | executable feature specs | DONE |
 | 68 | Add contract tests | inter-service compatibility | provider/consumer gates | NEXT |
 | 69 | Add performance tests | capacity baseline | latency/throughput profile | NEXT |
 | 70 | Add resilience tests | failure-mode confidence | outage/retry behavior tests | NEXT |

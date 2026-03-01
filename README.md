@@ -82,8 +82,18 @@ Typical minimum for each microservice:
 Pipeline behavior:
 - Always validates Docker Compose and infra YAML files.
 - Auto-detects Maven modules (`pom.xml`) and runs `mvn clean verify` for each.
+- Includes unit + controller + repository + Cucumber BDD tests in Maven test phase.
+- Testcontainers integration test runs when Docker is available (skips safely when unavailable).
 - Publishes JUnit reports and archives jars/wars.
 - Builds Docker images when `Dockerfile` files are present.
+
+### Build now in Jenkins (CI-only build)
+Use **Build with Parameters** and set:
+1. `DEPLOY_TO_MINIKUBE=false`
+2. `ENABLE_SONARQUBE_SCAN=false` (or true if Sonar is running)
+3. Keep defaults for the rest
+
+This runs validation + Maven build/tests + artifacts, without Kubernetes deploy.
 
 ## 8) Dev/Test/Prod promotion model with code review
 
