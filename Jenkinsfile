@@ -211,22 +211,24 @@ EOF_POMS
       when {
         allOf {
           expression { env.MAVEN_PROJECT_COUNT != '0' }
-          expression { return params.ENABLE_SONARQUBE_SCAN }
+          expression { return params.ENABLE_SONARQUBE_SCAN?.toString()?.toBoolean() }
         }
       }
       steps {
         sh '''
           set -euo pipefail
+          SONAR_HOST_URL_EFFECTIVE="${SONAR_HOST_URL:-http://localhost:9002}"
+          SONAR_TOKEN_EFFECTIVE="${SONAR_TOKEN:-}"
 
           while IFS= read -r pom; do
             [ -z "$pom" ] && continue
             dir=$(dirname "$pom")
 
             echo "---- Running SonarQube scan in $dir ----"
-            if [ -n "${SONAR_TOKEN}" ]; then
-              (cd "$dir" && mvn -B -ntp sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.token="${SONAR_TOKEN}")
+            if [ -n "${SONAR_TOKEN_EFFECTIVE}" ]; then
+              (cd "$dir" && mvn -B -ntp sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL_EFFECTIVE}" -Dsonar.token="${SONAR_TOKEN_EFFECTIVE}")
             else
-              (cd "$dir" && mvn -B -ntp sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL}")
+              (cd "$dir" && mvn -B -ntp sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL_EFFECTIVE}")
             fi
           done <<EOF_POMS
 ${MAVEN_POMS}
