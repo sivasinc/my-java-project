@@ -37,4 +37,10 @@ class AccountRepositoryTest {
     assertThat(found).isPresent();
     assertThat(found.get().getCurrency()).isEqualTo("USD");
   }
+
+  @Test
+  void findByAccountNumberShouldReturnEmptyWhenMissing() {
+    var found = accountRepository.findByAccountNumber("ACCREPO404");
+    assertThat(found).isEmpty();
+  }
 }

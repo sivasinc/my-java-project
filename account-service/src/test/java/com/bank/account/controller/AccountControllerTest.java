@@ -78,6 +78,39 @@ class AccountControllerTest {
   }
 
   @Test
+  void createShouldReturnConflictWhenAccountNumberExists() throws Exception {
+    UUID customerId = UUID.randomUUID();
+    when(accountService.create(any()))
+        .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Account number already exists"));
+
+    mockMvc.perform(post("/api/accounts")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "customerId":"%s",
+                  "accountNumber":"ACCWEB409",
+                  "currency":"USD",
+                  "openingBalance":50.00
+                }
+                """.formatted(customerId)))
+        .andExpect(status().isConflict());
+  }
+
+  @Test
+  void getShouldReturnOkWhenPresent() throws Exception {
+    UUID id = UUID.randomUUID();
+    UUID customerId = UUID.randomUUID();
+    AccountResponse response = new AccountResponse(
+        id, customerId, "ACCWEB200", "USD", BigDecimal.valueOf(250.00), "ACTIVE",
+        OffsetDateTime.now(), OffsetDateTime.now());
+    when(accountService.get(eq(id))).thenReturn(response);
+
+    mockMvc.perform(get("/api/accounts/{id}", id))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accountNumber").value("ACCWEB200"));
+  }
+
+  @Test
   void getShouldReturnNotFound() throws Exception {
     UUID id = UUID.randomUUID();
     when(accountService.get(eq(id))).thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
