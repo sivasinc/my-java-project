@@ -237,11 +237,8 @@ EOF_POMS
             script: '''
               set -euo pipefail
               SERVICE_NAME="${SONAR_HELM_RELEASE}-sonarqube"
-              SONAR_URL="$(minikube service -n "${SONAR_HELM_NAMESPACE}" "${SERVICE_NAME}" --url 2>/dev/null | head -n1 || true)"
-              if [ -z "${SONAR_URL}" ]; then
-                NODE_PORT="$(kubectl get svc "${SERVICE_NAME}" -n "${SONAR_HELM_NAMESPACE}" -o jsonpath='{.spec.ports[0].nodePort}')"
-                SONAR_URL="http://$(minikube ip):${NODE_PORT}"
-              fi
+              NODE_PORT="$(kubectl get svc "${SERVICE_NAME}" -n "${SONAR_HELM_NAMESPACE}" -o jsonpath='{.spec.ports[0].nodePort}')"
+              SONAR_URL="http://$(minikube ip):${NODE_PORT}"
               echo "${SONAR_URL}"
             ''',
             returnStdout: true
