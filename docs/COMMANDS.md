@@ -97,3 +97,14 @@ Expected Maven stage behavior:
 - runs `mvn clean verify`
 - executes unit/controller/repository/Cucumber BDD tests
 - Testcontainers integration test skips if Docker is unavailable
+
+## 12) SonarQube on Minikube (manual check)
+```bash
+kubectl config use-context minikube
+kubectl get ns banking-tools >/dev/null 2>&1 || kubectl create ns banking-tools
+helm upgrade --install sonar deploy/helm/sonarqube-local -n banking-tools --wait --timeout 10m
+kubectl get pods -n banking-tools
+minikube service -n banking-tools sonar-sonarqube --url
+```
+
+Use returned URL in Jenkins `SONAR_HOST_URL` only when not using auto-resolution stage.

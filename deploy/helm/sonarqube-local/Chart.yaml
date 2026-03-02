@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sonarqube-local
+description: Minimal SonarQube chart for local Minikube-based quality scanning
+type: application
+version: 0.1.0
+appVersion: "lts-community"

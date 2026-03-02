@@ -1,0 +1,30 @@
+replicaCount: 1
+
+image:
+  repository: sonarqube
+  tag: lts-community
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 9000
+  targetPort: 9000
+  nodePort: 30902
+
+persistence:
+  enabled: true
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    cpu: 1500m
+    memory: 2Gi
+
+env:
+  SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"

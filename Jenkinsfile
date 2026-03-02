@@ -10,6 +10,10 @@ pipeline {
     booleanParam(name: 'ENABLE_SONARQUBE_SCAN', defaultValue: false, description: 'Run SonarQube static analysis (requires local SonarQube server)')
     string(name: 'SONAR_HOST_URL', defaultValue: 'http://localhost:9002', description: 'SonarQube server URL')
     password(name: 'SONAR_TOKEN', defaultValue: '', description: 'SonarQube token (optional for local anonymous mode)')
+    booleanParam(name: 'DEPLOY_SONARQUBE_TO_MINIKUBE', defaultValue: false, description: 'Deploy SonarQube to Minikube and use that endpoint for scan')
+    string(name: 'SONAR_HELM_RELEASE', defaultValue: 'sonar', description: 'Helm release name for SonarQube in Minikube')
+    string(name: 'SONAR_HELM_NAMESPACE', defaultValue: 'banking-tools', description: 'Kubernetes namespace for SonarQube in Minikube')
+    string(name: 'SONAR_HELM_CHART_PATH', defaultValue: 'deploy/helm/sonarqube-local', description: 'Path to SonarQube Helm chart')
     string(name: 'KEYCLOAK_REALM', defaultValue: 'banking', description: 'Keycloak realm for JWT smoke test')
     string(name: 'KEYCLOAK_CLIENT_ID', defaultValue: 'account-service-client', description: 'OIDC client id for token request')
     password(name: 'KEYCLOAK_CLIENT_SECRET', defaultValue: '', description: 'OIDC client secret (leave empty for public clients)')
@@ -37,6 +41,7 @@ pipeline {
     DEPLOY_ENV = ""
     DEPLOY_NAMESPACE = ""
     HELM_VALUES_FILE = ""
+    SONAR_HOST_URL_EFFECTIVE = ""
   }
 
   stages {
@@ -207,6 +212,46 @@ EOF_POMS
       }
     }
 
+    stage('Deploy SonarQube to Minikube (Optional)') {
+      when {
+        allOf {
+          expression { env.MAVEN_PROJECT_COUNT != '0' }
+          expression { return params.ENABLE_SONARQUBE_SCAN?.toString()?.toBoolean() }
+          expression { return params.DEPLOY_TO_MINIKUBE?.toString()?.toBoolean() }
+          expression { return params.DEPLOY_SONARQUBE_TO_MINIKUBE?.toString()?.toBoolean() }
+          expression { return fileExists(params.SONAR_HELM_CHART_PATH) }
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          kubectl config use-context minikube
+          kubectl get namespace "${SONAR_HELM_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${SONAR_HELM_NAMESPACE}"
+          helm upgrade --install "${SONAR_HELM_RELEASE}" "${SONAR_HELM_CHART_PATH}" \
+            --namespace "${SONAR_HELM_NAMESPACE}" \
+            --wait --timeout 10m
+          kubectl rollout status deployment/"${SONAR_HELM_RELEASE}-sonarqube" -n "${SONAR_HELM_NAMESPACE}" --timeout=600s
+        '''
+        script {
+          def sonarUrl = sh(
+            script: '''
+              set -euo pipefail
+              SERVICE_NAME="${SONAR_HELM_RELEASE}-sonarqube"
+              SONAR_URL="$(minikube service -n "${SONAR_HELM_NAMESPACE}" "${SERVICE_NAME}" --url 2>/dev/null | head -n1 || true)"
+              if [ -z "${SONAR_URL}" ]; then
+                NODE_PORT="$(kubectl get svc "${SERVICE_NAME}" -n "${SONAR_HELM_NAMESPACE}" -o jsonpath='{.spec.ports[0].nodePort}')"
+                SONAR_URL="http://$(minikube ip):${NODE_PORT}"
+              fi
+              echo "${SONAR_URL}"
+            ''',
+            returnStdout: true
+          ).trim()
+          env.SONAR_HOST_URL_EFFECTIVE = sonarUrl
+          echo "Resolved Minikube SonarQube URL: ${env.SONAR_HOST_URL_EFFECTIVE}"
+        }
+      }
+    }
+
     stage('SonarQube Scan (Optional)') {
       when {
         allOf {
@@ -217,7 +262,7 @@ EOF_POMS
       steps {
         sh '''
           set -euo pipefail
-          SONAR_HOST_URL_EFFECTIVE="${SONAR_HOST_URL:-http://localhost:9002}"
+          SONAR_HOST_URL_EFFECTIVE="${SONAR_HOST_URL_EFFECTIVE:-${SONAR_HOST_URL:-http://localhost:9002}}"
           SONAR_TOKEN_EFFECTIVE="${SONAR_TOKEN:-}"
 
           while IFS= read -r pom; do

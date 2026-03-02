@@ -228,6 +228,22 @@ docker compose --env-file .env up -d sonarqube
   - `SONAR_HOST_URL=http://localhost:9002`
   - `SONAR_TOKEN=<token>` (optional in local anonymous mode)
 
+### SonarQube on Minikube (optional)
+- Helm chart path: `deploy/helm/sonarqube-local`
+- Persistent storage: PVC (`10Gi` by default)
+- Exposed as NodePort service (`30902` by default)
+- Jenkins parameters:
+  - `DEPLOY_TO_MINIKUBE=true`
+  - `DEPLOY_SONARQUBE_TO_MINIKUBE=true`
+  - `ENABLE_SONARQUBE_SCAN=true`
+  - `SONAR_HELM_CHART_PATH=deploy/helm/sonarqube-local`
+  - `SONAR_HELM_RELEASE=sonar`
+  - `SONAR_HELM_NAMESPACE=banking-tools`
+- Pipeline behavior:
+  - deploys SonarQube to Minikube
+  - resolves Minikube Sonar URL automatically
+  - runs Maven `sonar:sonar` against that resolved URL
+
 ### OIDC/JWT smoke test in Jenkins (optional)
 - Pipeline parameters:
   - `ENABLE_AUTH_SMOKE_TEST=true`
